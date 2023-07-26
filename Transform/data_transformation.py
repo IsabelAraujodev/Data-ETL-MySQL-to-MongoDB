@@ -1,53 +1,86 @@
 #Code to convert the tabular data into a document orient formact.
 
-from sqlalchemy import create_engine
+import pandas as pd
 
-class MySQLConnection: 
-    def __init__(self, user, passwd = None, host = 'localhost', port = 3306, database = None):
-        """Initialize a connection of the class with the MySQL database
 
-        Args:
-            user: database user
-            passwd: a password if exist one
-            host: localhost, ip or domain of destiny
-            port: default port 3306
-            database: the database who be accessed
-        """
-        self.user = user
-        self.passwd = passwd
-        self.database = database
-        self.host = host
-        self.port = port
-        self.engine = None
+def transforming_data(data):
+    """
+        Transformation of the data from tabular to document format
+    data: dict with the tabular data
+    return: dict based in json document format
+    """
 
-    def set_mysql_engine(self):
+    df = pd.DataFrame.from_dict(data)
+    ids = []
 
-        connection_string = ''.join(['mysql+pymysql://', self.user, ':', self.passwd, '@',
-                                     self.host, ':', str(self.port), '/', self.database])
-        #'mysql://user:passwd@host:port/database'
-        self.engine = create_engine(connection_string)
-        try:
-            self.engine.connect()
-        except ConnectionError():
-            raise 'Error During the connection'
-        
+    for element in df['id_order'].tolist():
+        if element not in ids:
+            ids.append(element)
 
-    QUERY = query = (
-        "SELECT o.order as 'id_order', \
-               c.customerNumber as 'id_customer',\
-               o.orderDate as 'orderDate',\
-               o.status, \
-               p.productsCode as 'id_product'\
-               p.productName as 'name',\
-               p.productLine as 'category',\
-               od.quantityOrdered as 'quantity',\
-               od.priceEach as 'price',\
-               c.city,\
-               c.state,\
-               c.country,\
-            FROM orders o\
-                INNER JOIN orderdetails ON o.orderNumber = od.orderNumber\
-                INNER JOIN prodducts p ON od.productCode = p.productCode\
-                INNER JOIN customers c ON c.customerNumber = o.customerNumber\
-            ORDER BY o.orderNumber;"\
+    documents_list = []
+
+    for code in ids:
+        sub_df = (df.loc[lambda df: df['id_order'] == code])
+        i = sub_df.index.tolist()[0]
+        index_range = [i, i+len(sub_df)]
+        documents = None
+
+        for index in range(index_range[0], index_range[1]):
+            if documents is None:
+                documents = document_creation(sub_df, index)
+            else:
+                appending_doc_data(documents, sub_df, index)
+
+        documents_list.append(documents)
+
+    return documents_list
+
+
+def document_creation(sub_df, index):
+    """
+        Document creation function
+    sub_df: dataframe subset
+    index: data position in the dataframe
+    return:
+    """
+    documents = {
+        "id_pedido": (sub_df['id_order'][index]).item(),
+        "id_customer": (sub_df['id_customer'][index]).item(),
+        "local": {
+            "city": sub_df['city'][index],
+            "state": sub_df['state'][index],
+            "country": sub_df['country'][index]
+        },
+        # "order_date": datetime.datetime(sub_df['order_date'][index]),
+        "order_status": sub_df['status'][index],
+        "products": [
+            {
+                "id_product": sub_df['id_product'][index],
+                "name": sub_df['name'][index],
+                "category": sub_df['id_product'][index],
+                "quantity": (sub_df['quantity'][index]).item(),
+                "price": float(sub_df['price'][index])
+            }
+        ],
+    }
+
+    return documents
+
+def  appending_doc_data(documents, sub_df, index):
+    """
+        Suport function for the orginal function: document_creation()
+    documents: dict with the json document format
+    sub_df: dataframe subset
+    index: data position
+    return: data appended to the dict
+    """
+    # add the others products
+    documents['products'].append(
+        {
+            "id_product": sub_df['id_product'][index],
+            "name": sub_df['name'][index],
+            "category": sub_df['id_product'][index],
+            "quantity": (sub_df['quantity'][index]).item(),
+            "price": float(sub_df['price'][index])
+        }
     )
